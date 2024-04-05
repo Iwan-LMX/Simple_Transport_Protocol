@@ -1,19 +1,13 @@
-"""
-arguments: sender_port (49152 - 65535), receiver_port, txt_file_to_send, max_win (>= 1000B), rto, flp, rlp.
-"""
-# included head files
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
+import random
+import socket
+import sys
+import threading
+import time
+from dataclasses import dataclass
 
-#--------------------------------------------------------#
-#----------------Self defined functions------------------#
-#--------------------------------------------------------#
-# Encapsulate STP
-
-# Loss packets process 
-
-
-# 1. execute connection setup
-
-# 2. data transmission
-
-# 3. connection teardown
+NUM_ARGS  = 7  # Number of command-line arguments
+BUF_SIZE  = 3  # Size of buffer for receiving messages
+MAX_SLEEP = 2  # Max seconds to sleep before sending the next message
