@@ -111,7 +111,7 @@ def listen_thread(control: Control):
                     remainWin += len(window.pop(seqno))
                 timer.cancel()
 
-                if window:
+                if window: #没有考虑 如果win 只有一个pkt
                     timer = threading.Timer(control.rto, timer_thread, args=(control, window[min(window)]))
                     timer.start()
                 else:
