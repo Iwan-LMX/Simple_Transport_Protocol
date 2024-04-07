@@ -6,7 +6,6 @@ import sys
 import os
 
 NUM_ARGS = 4  # Number of command-line arguments
-BUF_SIZE = 3  # Size of buffer for sending/receiving data
 MSL = 1       # Maximum segment lifetimes, second
 #--------------------------------------------------------------------------#
 #---------------------------------Main body--------------------------------#
@@ -14,24 +13,21 @@ MSL = 1       # Maximum segment lifetimes, second
 def main():
     if len(sys.argv) != NUM_ARGS + 1:
         sys.exit(f"Usage: {sys.argv[0]} port wait_time")
-    receiver_port   = parse_port(sys.argv[1])
-    sender_port     = parse_port(sys.argv[2])
-    txt_file_received = sys.argv[3]
-    max_win         = parse_win(sys.argv[4])
+    sender_port, receiver_port, txt_file_received, max_win = parse_argv(sys.argv)
 
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
         #-------------------Listening state------------------------#
         receiver.bind(('', receiver_port))
         while True:
-            buf, addr = receiver.recvfrom(BUF_SIZE)
+            buf, addr = receiver.recvfrom(max_win)
             #Packet was received,
-            rcv_type, rcv_seqno,  = parse_packet(buf)
+            rcv_type, rcv_seqno, rcv_data= parse_packet(buf)
 
             if rcv_type == 2 and addr[1] == sender_port:
                 reply_ACK(receiver, rcv_seqno, 1, addr)
                 break
         #-----------------Established state------------------------#
-        filename = './receive_log/txt_file_received.txt'
+        filename = f'./receiver/{txt_file_received}'
         if os.path.exists(filename):
             root, ext = os.path.splitext(filename)
             index = 1
@@ -39,13 +35,14 @@ def main():
                 filename = f"{root}_({index}){ext}"
                 index += 1
         
-        with open(filename, 'a') as file:
+        with open(filename, 'a+') as file:
             buffer = []
             while True:
-                buf, addr = receiver.recvfrom(BUF_SIZE)
+                buf, addr = receiver.recvfrom(max_win)
                 #Packet was received,
                 if addr[1] == sender_port:
                     rcv_type, rcv_seqno, rcv_data = parse_packet(buf)
+                    print(f"recvfrom: received message: type={rcv_type} seqno={rcv_seqno}")
                     if rcv_type == 0:
                         #need fix for unordered packet
                         file.write(rcv_data)
@@ -60,7 +57,7 @@ def main():
         receiver.settimeout(2*MSL) 
         while True:
             try:
-                buf, addr = receiver.recvfrom(BUF_SIZE)
+                buf, addr = receiver.recvfrom(max_win)
                 rcv_type, rcv_seqno,  = parse_packet(buf)
                 if rcv_type == 3 and addr == sender_port:
                     reply_ACK(receiver, rcv_seqno, 1, addr)
@@ -84,27 +81,23 @@ def parse_packet(buf):
     data = buf[4:].decode("utf-8")
     return type, seqno, data
 
-def parse_port(port_str, min_port=49152, max_port=65535):
+def parse_argv(argv):
+    min_port = 49152;   max_port = 65535
+    min_win = 1000
     try:
-        port = int(port_str)
+        sender_port = int(argv[1])
+        receiver_port = int(argv[2])
+        txt_file_received = argv[3]
+        max_win = int(argv[4])
     except ValueError:
-        sys.exit(f"Invalid port argument, must be numerical: {port_str}")
+        sys.exit(f"Invalid argument!")
     
-    if not (min_port <= port <= max_port):
-        sys.exit(f"Invalid port argument, must be between {min_port} and {max_port}: {port}")
-              
-    return port
-
-def parse_win(max_win, min_win=1000):
-    try:
-        win = int(max_win)
-    except ValueError:
-        sys.exit(f"Invalid max_win argument, must be numerical: {max_win}")
-    
+    if not (min_port <= sender_port <= max_port or min_port <= receiver_port <= max_port):
+        sys.exit(f"Invalid port argument, must be between {min_port} and {max_port}")
     if max_win < min_win:
         sys.exit(f"Invalid window argument, must larger or equal than {min_win}")
 
-    return win
+    return sender_port, receiver_port, txt_file_received, max_win
 
 #--------------------------------------------------------------------------#
 #------------------------Entrance of the code------------------------------#
