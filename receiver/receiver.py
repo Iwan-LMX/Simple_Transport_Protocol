@@ -4,9 +4,6 @@
 import socket
 import sys
 import time
-NUM_ARGS = 4  # Number of command-line arguments
-MSL = 1       # Maximum segment lifetimes, second
-t = {0: 'DATA', 1:'ACK', 2:'SYN', 3:'FIN'}
 #--------------------------------------------------------------------------#
 #---------------------------------Main body--------------------------------#
 #--------------------------------------------------------------------------#
@@ -17,7 +14,7 @@ def main():
     next_seq = 0
     global startTime, window, remainWin
 
-    log = open('./receiver/receiver_log.txt', 'w+')
+    
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
         #-------------------Listening state------------------------#
         receiver.bind(('', receiver_port))
@@ -28,7 +25,7 @@ def main():
 
             if rcv_type == 2 and addr[1] == sender_port:
                 startTime = time.time()
-                next_seq = reply_ACK(receiver, rcv_seqno, 0, addr, log, time.time(), 'SYN')
+                next_seq = reply_ACK(receiver, rcv_seqno, 0, addr, time.time(), 'SYN')
                 break
         #-----------------Established state------------------------#
         remainWin = max_win
@@ -46,17 +43,17 @@ def main():
                         while next_seq in window:
                             data = window.pop(next_seq);    remainWin+=len(data)
                             file.write(data.decode("utf-8"))
-                            next_seq = reply_ACK(receiver, next_seq, len(data), addr, log, time.time(), 'DATA')
+                            next_seq = reply_ACK(receiver, next_seq, len(data), addr, time.time(), 'DATA')
                     else: #unordered pkt
-                        reply_ACK(receiver, next_seq, 0, addr, log)
+                        reply_ACK(receiver, next_seq, len(rcv_data), addr, time.time(), 'DATA')
                 elif rcv_type == 0 and remainWin < len(rcv_data):
                     print(f"drop a packet: seqno = {rcv_seqno}")
                     continue
                 
                 if rcv_type == 2:
-                    reply_ACK(receiver, rcv_seqno, 0, addr, log, time.time(), 'SYN')  
+                    reply_ACK(receiver, rcv_seqno, 0, addr, time.time(), 'SYN')  
                 if rcv_type == 3:
-                    reply_ACK(receiver, rcv_seqno, 0, addr, log, time.time(), 'FIN')
+                    reply_ACK(receiver, rcv_seqno, 0, addr, time.time(), 'FIN')
                     break
         file.close()                
         #-----------------------Time Wait--------------------------#
@@ -66,7 +63,7 @@ def main():
                 buf, addr = receiver.recvfrom(max_win)
                 rcv_type, rcv_seqno,  rcv_data = parse_packet(buf)
                 if rcv_type == 3 and addr == sender_port:
-                    reply_ACK(receiver, rcv_seqno, 1, addr, log, time.time(), 'FIN')
+                    reply_ACK(receiver, rcv_seqno, 1, addr, time.time(), 'FIN')
             except socket.timeout:
                 break
         receiver.close()
@@ -75,8 +72,8 @@ def main():
 #--------------------------------------------------------------------------#
 #------------------------Self defined functions----------------------------#
 #--------------------------------------------------------------------------#
-def reply_ACK(socket, rcv_seqno, size, addr, log, time, type):
-    global startTime
+def reply_ACK(socket, rcv_seqno, size, addr, time, type):
+    global startTime, log
     log.write(f"rcv\t %7.2f\t\t {type}\t {rcv_seqno}\t {size}\n" %((time - startTime)*1000))
 
     pkt = (1).to_bytes(2, byteorder='big');     
@@ -116,8 +113,10 @@ def parse_argv(argv):
 #--------------------------------------------------------------------------#
 #------------------------Entrance of the code------------------------------#
 #--------------------------------------------------------------------------#
-if __name__ == "__main__": 
-    window = {}
-    remainWin = 0
-    startTime = 0
+if __name__ == "__main__":
+    NUM_ARGS = 4  # Number of command-line arguments
+    MSL = 1       # Maximum segment lifetimes, second
+    t = {0: 'DATA', 1:'ACK', 2:'SYN', 3:'FIN'}
+    window = {};    remainWin = 0;  startTime = 0
+    log = open('./receiver/receiver_log.txt', 'w+')
     main()

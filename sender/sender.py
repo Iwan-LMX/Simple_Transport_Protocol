@@ -8,10 +8,6 @@ import threading
 import time
 from dataclasses import dataclass
 
-NUM_ARGS  = 7  # Number of command-line arguments
-BUF_SIZE  = 3  # Size of buffer for receiving messages
-MAX_SLEEP = 2  # Max seconds to sleep before sending the next message
-DATA = 0;   ACK = 1;    SYN = 2;    FIN = 3
 @dataclass
 class Control:
     """Control block: parameters for the sender program."""
@@ -29,21 +25,21 @@ def main():
     if len(sys.argv) != NUM_ARGS + 1:
         sys.exit(f"Usage: {sys.argv[0]} port wait_time")
     control = parse_argv(sys.argv)
-    global window, remainWin
-
+    global window, remainWin, startTime, log
     #-------------------------SYN_SENT-----------------------#
     random.seed();  seqno = random.randrange(2**16)
     control.socket.settimeout(control.rto)
-    send_pkt(control, SYN, seqno)
+    send_pkt(control, SYN, seqno);  startTime = time.time()
     while control.is_alive:
         try:
             pkt = control.socket.recv(control.max_win)
-            if int.from_bytes(pkt[:2], 'big') == 1 and seqno+1 == int.from_bytes(pkt[2:4], 'big'):
+            if int.from_bytes(pkt[:2], 'big') == 1:
+                seqno = (seqno + 1) % 65535
+                log.write(f"rcv\t %7.2f\t\t {t[1]}\t {seqno}\t 0\n" %((time.time() - startTime)*1000))
                 break
         except socket.timeout:
-            send_pkt(control, SYN, seqno)
-            continue
-    seqno = (seqno + 1) % 65535;   control.socket.settimeout(None)
+            send_pkt(control, SYN, seqno);  continue
+    control.socket.settimeout(None)
 
     #--------------------Established & Finish state-------------------#
     listener = threading.Thread(target=listen_thread, args=(control, ))
@@ -87,15 +83,20 @@ def main():
 #------------------------Self defined functions----------------------------#
 #--------------------------------------------------------------------------#
 def send_pkt(control: Control, type: int, seqno: int, data = b''):
+    global startTime, log
     pkt = type.to_bytes(2, "big")
     pkt += seqno.to_bytes(2, "big");    pkt += data
 
     control.socket.send(pkt)
-    print(f"send: message: type={type},  seqno={seqno}")
+    log.write(f"snd\t %7.2f\t\t {t[type]}\t {seqno}\t {len(data)}\n" %((time.time() - startTime)*1000))
     return pkt
 
 def timer_thread(control: Control, pkt): #will retransmit the file while timeout
+    global startTime, log
     control.socket.send(pkt)
+
+    type = 'DATA' if len(pkt) > 4 else 'FIN'
+    log.write(f"snd\t %7.2f\t\t {type}\t {int.from_bytes(pkt[2:4], "big")}\t 0\n" %((time.time() - startTime)*1000))
 
 def listen_thread(control: Control):
     global window, remainWin
@@ -106,7 +107,7 @@ def listen_thread(control: Control):
             recv = control.socket.recv(control.max_win)
             seqno = int.from_bytes(recv[2:4], "big")
             if seqno in window:
-                print(f"rcv: seqno={seqno}")    
+                log.write(f"rcv\t %7.2f\t\t {t[1]}\t {seqno}\t 0\n" %((time.time() - startTime)*1000))  
                 with threading.Lock():  
                     remainWin += len(window.pop(seqno))
                 timer.cancel()
@@ -116,6 +117,8 @@ def listen_thread(control: Control):
                     timer.start()
                 else:
                     break
+            else:
+                log.write(f"drp\t %7.2f\t\t {t[1]}\t {seqno}\t 0\n" %((time.time() - startTime)*1000))
         except BlockingIOError: #No data available to read
             continue
         
@@ -157,6 +160,11 @@ def parse_argv(argv: list) -> Control:
 #------------------------Entrance of the code------------------------------#
 #--------------------------------------------------------------------------#
 if __name__ == "__main__":
-    window = {} #dict ACKno: len
-    remainWin = 0
+    NUM_ARGS  = 7  # Number of command-line arguments
+    BUF_SIZE  = 3  # Size of buffer for receiving messages
+    MAX_SLEEP = 2  # Max seconds to sleep before sending the next message
+    DATA = 0;   ACK = 1;    SYN = 2;    FIN = 3
+    t = {0: 'DATA', 1:'ACK', 2:'SYN', 3:'FIN'}
+    window = {};   remainWin = 0;   startTime = 0
+    log = open('./sender/sender_log.txt ', 'w+')
     main()
