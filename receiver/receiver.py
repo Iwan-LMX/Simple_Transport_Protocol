@@ -61,7 +61,7 @@ def main():
                     else: control.dup_seg_recv += 1; control.dup_seg_snd += 1
                     next_seq = reply_ACK(receiver, next_seq, 0, addr)
                 elif rcv_type == 0 and remainWin < len(rcv_data):
-                    print(f"drop a packet: seqno = {rcv_seqno}")
+                    print(f"drop a packet: seqno = {rcv_seqno} next: {next_seq}")
                     continue
                 
                 if rcv_type == 2:
@@ -86,7 +86,7 @@ def main():
 
         timer.cancel()
         receiver.close()
-    log.write(f"Original data received:\t\t{control.ori_data_recv}\n")
+    log.write(f"\nOriginal data received:\t\t{control.ori_data_recv}\n")
     log.write(f"Original segments received:\t{control.ori_seg_recv}\n")
     log.write(f"Dup data segments received:\t{control.dup_seg_recv}\n")
     log.write(f"Dup ack segments sent:\t\t{control.dup_seg_snd}\n")
