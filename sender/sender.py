@@ -122,6 +122,9 @@ def listen_thread():
         except socket.timeout:
             if window: continue
             else:  break
+        except ConnectionRefusedError:
+            control.is_alive = False
+            break
 
 def record_log(kind, type, seqno, length):
     global log, startTime
