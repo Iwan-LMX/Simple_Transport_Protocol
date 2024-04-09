@@ -5,38 +5,48 @@ import socket
 import sys
 import time
 import threading
+from dataclasses import dataclass
+
+@dataclass
+class Control:
+    """Control block: parameters for the sender program."""
+    receiver_port: int
+    sender_port: int
+    txt_file_received: str
+    max_win: int         
+    is_alive: bool = True
+    ori_data_recv: int = 0; ori_seg_recv: int = 0
+    dup_seg_recv: int = 0; dup_seg_snd: int = 0
 #--------------------------------------------------------------------------#
 #---------------------------------Main body--------------------------------#
 #--------------------------------------------------------------------------#
 def main():
     if len(sys.argv) != NUM_ARGS + 1:
         sys.exit(f"Usage: {sys.argv[0]} port wait_time")
-    receiver_port, sender_port, txt_file_received, max_win = parse_argv(sys.argv)
+    global startTime, window, remainWin, control
+    control = parse_argv(sys.argv)
     next_seq = 0
-    global startTime, window, remainWin, log, con_alive
 
-    
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver:
         #-------------------Listening state------------------------#
-        receiver.bind(('', receiver_port)); receiver.settimeout(None)
-        while con_alive:
-            buf, addr = receiver.recvfrom(max_win)
+        receiver.bind(('', control.receiver_port)); receiver.settimeout(None)
+        while control.is_alive:
+            buf, addr = receiver.recvfrom(control.max_win)
             #Packet was received,
             rcv_type, rcv_seqno, rcv_data= parse_packet(buf)
 
-            if rcv_type == 2 and addr[1] == sender_port:
+            if rcv_type == 2 and addr[1] == control.sender_port:
                 startTime = time.time()
                 record_log('rcv', 'SYN', rcv_seqno, 0)
                 next_seq = reply_ACK(receiver, rcv_seqno, 1, addr)
                 break
         #-----------------Established state------------------------#
-        remainWin = max_win
-
-        filename = f'./receiver/{txt_file_received}';   file = open(filename, 'w+')
-        while con_alive:
-            buf, addr = receiver.recvfrom(max_win)
+        remainWin = control.max_win
+        filename = f'./receiver/{control.txt_file_received}';   file = open(filename, 'w+')
+        while control.is_alive:
+            buf, addr = receiver.recvfrom(control.max_win)
             #Packet was received,
-            if addr[1] == sender_port:
+            if addr[1] == control.sender_port:
                 rcv_type, rcv_seqno, rcv_data = parse_packet(buf)
                 if rcv_type == 0 and remainWin >= len(rcv_data):
                     if next_seq <= rcv_seqno:
@@ -45,10 +55,11 @@ def main():
                         if next_seq in window:
                             while next_seq in window:
                                 data = window.pop(next_seq);    remainWin+=len(data)
+                                control.ori_data_recv += len(data); control.ori_seg_recv += 1
                                 file.write(data.decode("utf-8"))
                                 next_seq += len(data)
+                    else: control.dup_seg_recv += 1; control.dup_seg_snd += 1
                     next_seq = reply_ACK(receiver, next_seq, 0, addr)
-
                 elif rcv_type == 0 and remainWin < len(rcv_data):
                     print(f"drop a packet: seqno = {rcv_seqno}")
                     continue
@@ -63,11 +74,11 @@ def main():
         #-----------------------Time Wait--------------------------#
         timer = threading.Timer(2*MSL, timer_thread)
         timer.start();  receiver.settimeout(MSL)
-        while con_alive:
+        while control.is_alive:
             try:
-                buf, addr = receiver.recvfrom(max_win)
+                buf, addr = receiver.recvfrom(control.max_win)
                 rcv_type, rcv_seqno, rcv_data = parse_packet(buf)
-                if rcv_type == 3 and addr[1] == sender_port:
+                if rcv_type == 3 and addr[1] == control.sender_port:
                     record_log('rcv', 'FIN', rcv_seqno, 0)
                     reply_ACK(receiver, rcv_seqno, 1, addr)
             except socket.timeout:
@@ -75,16 +86,20 @@ def main():
 
         timer.cancel()
         receiver.close()
+    log.write(f"Original data received:\t\t{control.ori_data_recv}\n")
+    log.write(f"Original segments received:\t{control.ori_seg_recv}\n")
+    log.write(f"Dup data segments received:\t{control.dup_seg_recv}\n")
+    log.write(f"Dup ack segments sent:\t\t{control.dup_seg_snd}\n")
     file.close();   log.close()
     sys.exit(0)
 #--------------------------------------------------------------------------#
 #------------------------Self defined functions----------------------------#
 #--------------------------------------------------------------------------#
 def timer_thread():
-    print("Stop here")
+    # print("Stop here")
     with threading.Lock():
-        global con_alive
-        con_alive = False
+        global control
+        control.is_alive = False
 
 def record_log(kind, type, seqno, length):
     global log, startTime
@@ -113,6 +128,7 @@ def parse_argv(argv):
         sender_port = int(argv[2])
         txt_file_received = argv[3]
         max_win = int(argv[4])
+        control = Control(receiver_port, sender_port, txt_file_received, max_win)
     except ValueError:
         sys.exit(f"Invalid argument!")
     
@@ -121,7 +137,7 @@ def parse_argv(argv):
     if max_win < min_win:
         sys.exit(f"Invalid window argument, must larger or equal than {min_win}")
 
-    return receiver_port, sender_port, txt_file_received, max_win
+    return control
 
 #--------------------------------------------------------------------------#
 #------------------------Entrance of the code------------------------------#
@@ -132,5 +148,5 @@ if __name__ == "__main__":
     t = {0: 'DATA', 1:'ACK', 2:'SYN', 3:'FIN'}
     window = {};    remainWin = 0;  startTime = 0
     log = open('./receiver/receiver_log.txt', 'w+')
-    con_alive = True
+    control: Control
     main()

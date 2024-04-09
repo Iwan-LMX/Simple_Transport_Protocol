@@ -107,7 +107,7 @@ def listen_thread():
             recv = control.socket.recv(control.max_win)
             seqno = int.from_bytes(recv[2:4], "big")
             if not drop(control.rlp):
-                cnt = cnt + 1 if last_seqno == seqno else 0
+                cnt = cnt + 1 if last_seqno == seqno else 1
                 last_seqno = seqno
                 if seqno in window:
                     record_log('rcv', t[1], seqno, 0)
