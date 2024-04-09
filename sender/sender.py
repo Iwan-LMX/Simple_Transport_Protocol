@@ -54,7 +54,7 @@ def main():
         seqno = send_pkt(DATA, seqno, file[0: i])
         control.orig_data_snd+=len(file[0: i]); control.ori_seg_snd+=1
         listener = threading.Thread(target=listen_thread, args=());    listener.start()
-        timer = RepeatTimer(control.rto, timer_thread, args=(window[min(window)], ))
+        timer = RepeatTimer(control.rto, resend_pkt, args=(window[min(window)], ))
 
         while control.is_alive:
             if i < len(file) and remainWin >= len(file[i:i+1000]):
@@ -63,14 +63,14 @@ def main():
                 control.ori_seg_snd+=1;     control.orig_data_snd += len(data)
 
                 timer.cancel()
-                timer = RepeatTimer(control.rto, timer_thread, args=(window[min(window)], ))
+                timer = RepeatTimer(control.rto, resend_pkt, args=(window[min(window)], ))
                 timer.start()
             #--------------Closing state---------------------#
             if i>=len(file) and remainWin == control.max_win : 
                 timer.cancel()
                 # print(f"closing {control.rto}")
                 send_pkt(FIN, seqno)
-                timer = RepeatTimer(control.rto, timer_thread, args=(window[min(window)], ))
+                timer = RepeatTimer(control.rto, resend_pkt, args=(window[min(window)], ))
                 timer.start()
                 break
     #------------------------FIN_WAIT------------------------#
@@ -134,14 +134,16 @@ def listen_thread():
                     # record_log('dupACKrecv', t[1], seqno, 0)
                     control.dup_ack_recv += 1
                 if cnt == 3:
-                    control.socket.send(window[min(window)])
-                    control.resend_seg += 1
+                    # print('cnt = 3:')
+                    resend_pkt(window[min(window)])
                 # print(f"seqnos: {window.keys()}")
             else:
                 record_log('drp', t[1], seqno, 0)
                 control.ack_drp += 1
         except socket.timeout:
-            if window: continue
+            if window: 
+                print(window.keys())
+                continue
             else:  break
         except ConnectionRefusedError:
             control.is_alive = False
@@ -162,14 +164,15 @@ class RepeatTimer(threading.Timer):
         while not self.finished.wait(self.interval):
             self.function(*self.args, **self.kwargs)
 
-def timer_thread(pkt): #will retransmit the file while timeout
-    global control, window
+def resend_pkt(pkt): #will retransmit the file while timeout
+    global control
     control.socket.send(pkt)
-    type = 0 if len(pkt) > 4 else 3
+    type = int.from_bytes(pkt[:2], 'big');  seqno = int.from_bytes(pkt[2:4], 'big')
     # if type == 3:
         # print("resend: FIN")
-    record_log('snd', t[type], int.from_bytes(pkt[2:4], "big"), len(pkt[4:]))
+    record_log('snd', t[type], seqno, len(pkt[4:]))
     control.resend_seg += 1
+
 def setup_socket(remote, sender_port, receiver_port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
