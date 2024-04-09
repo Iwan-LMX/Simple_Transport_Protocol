@@ -37,7 +37,7 @@ def main():
 
     while control.is_alive:
         try:
-            pkt = control.socket.recv(control.max_win)
+            pkt = control.socket.recv(1024)
             if int.from_bytes(pkt[:2], 'big') == 1:
                 seqno = (seqno + 1) % 65536
                 window.pop(seqno)
@@ -118,7 +118,7 @@ def listen_thread():
 
     while control.is_alive:
         try:
-            recv = control.socket.recv(control.max_win)
+            recv = control.socket.recv(1024)
             seqno = int.from_bytes(recv[2:4], "big")
             if not drop(control.rlp):
                 record_log('rcv', t[1], seqno, 0)
@@ -151,7 +151,7 @@ def listen_thread():
 
 def record_log(kind, type, seqno, length):
     global log, startTime
-    log.write(f"{kind}\t %7.2f\t\t {type}\t {seqno}\t {length}\n" %((time.time() - startTime)*1000))
+    print(f"{kind}\t %7.2f\t\t {type}\t {seqno}\t {length}\n" %((time.time() - startTime)*1000))
 
 def drop(rate):
     random.seed()

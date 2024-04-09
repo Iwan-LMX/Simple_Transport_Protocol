@@ -31,7 +31,7 @@ def main():
         #-------------------Listening state------------------------#
         receiver.bind(('', control.receiver_port)); receiver.settimeout(None)
         while control.is_alive:
-            buf, addr = receiver.recvfrom(control.max_win)
+            buf, addr = receiver.recvfrom(1024)
             #Packet was received,
             rcv_type, rcv_seqno, rcv_data= parse_packet(buf)
 
@@ -44,7 +44,7 @@ def main():
         remainWin = control.max_win
         filename = f'./receiver/{control.txt_file_received}';   file = open(filename, 'w+')
         while control.is_alive:
-            buf, addr = receiver.recvfrom(control.max_win)
+            buf, addr = receiver.recvfrom(1024)
             #Packet was received,
             if addr[1] == control.sender_port:
                 rcv_type, rcv_seqno, rcv_data = parse_packet(buf)
@@ -76,7 +76,7 @@ def main():
         timer.start();  receiver.settimeout(MSL)
         while control.is_alive:
             try:
-                buf, addr = receiver.recvfrom(control.max_win)
+                buf, addr = receiver.recvfrom(1024)
                 rcv_type, rcv_seqno, rcv_data = parse_packet(buf)
                 if rcv_type == 3 and addr[1] == control.sender_port:
                     record_log('rcv', 'FIN', rcv_seqno, 0)
@@ -103,7 +103,7 @@ def timer_thread():
 
 def record_log(kind, type, seqno, length):
     global log, startTime
-    log.write(f"{kind}\t %7.2f\t\t {type}\t {seqno}\t {length}\n" %((time.time() - startTime)*1000))
+    print(f"{kind}\t %7.2f\t\t {type}\t {seqno}\t {length}\n" %((time.time() - startTime)*1000))
 
 def reply_ACK(socket, rcv_seqno, size, addr):
     pkt = (1).to_bytes(2, byteorder='big');     

@@ -1,26 +1,5 @@
-rcv	    0.00		 SYN	 28426	 0
-snd	    0.04		 ACK	 28427	 0
-rcv	    0.19		 DATA	 28427	 1000
-snd	    0.21		 ACK	 29427	 0
-rcv	    0.34		 DATA	 29427	 1000
-snd	    0.36		 ACK	 30427	 0
-rcv	    0.42		 DATA	 30427	 1000
-snd	    0.44		 ACK	 31427	 0
-rcv	    0.55		 DATA	 31427	 1000
-snd	    0.57		 ACK	 32427	 0
-rcv	    0.64		 DATA	 32427	 1000
-snd	    0.65		 ACK	 33427	 0
-rcv	    0.78		 DATA	 33427	 1000
-snd	    0.79		 ACK	 34427	 0
-rcv	    0.87		 DATA	 34427	 700
-snd	    0.88		 ACK	 35127	 0
-snd	  112.23		 ACK	 35127	 0
-rcv	  124.82		 FIN	 35127	 0
-snd	  124.83		 ACK	 35128	 0
-rcv	  237.47		 FIN	 35127	 0
-snd	  237.50		 ACK	 35128	 0
 
-Original data received:		6700
-Original segments received:	7
-Dup data segments received:	1
-Dup ack segments sent:		1
+Original data received:		18577
+Original segments received:	19
+Dup data segments received:	0
+Dup ack segments sent:		0
