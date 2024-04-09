@@ -81,6 +81,7 @@ def main():
             control.is_alive = False
         else:
             continue
+    control.socket.close()
     log.write(f"\nOriginal data sent:\t\t\t{control.orig_data_snd}\n")
     log.write(f"Original data acked:\t\t{control.ori_data_recv}\n")
     log.write(f"Original segments sent:\t\t{control.ori_seg_snd}\n")
@@ -89,7 +90,6 @@ def main():
     log.write(f"Data segments dropped:\t\t{control.snd_seg_drp}\n")
     log.write(f"Ack segments dropped:\t\t{control.ack_drp}\n")
     log.close()
-    control.socket.close()
     sys.exit(0)
 #--------------------------------------------------------------------------#
 #------------------------Self defined functions----------------------------#
@@ -131,7 +131,7 @@ def listen_thread():
                             control.ori_data_recv += (len(pkt) -4)
                             remainWin += (len(pkt) - 4)
                 if rcv_type == 3:
-                    print("FInish listen")
+                    # print("FInish listen")
                     break
                 else:
                     control.dup_ack_recv += 1
@@ -147,7 +147,8 @@ def listen_thread():
 
 def record_log(kind, type, seqno, length):
     global log, startTime
-    print(f"{kind}\t %7.2f\t\t {type}\t {seqno}\t {length}\n" %((time.time() - startTime)*1000))
+    with threading.Lock():
+        log.write(f"{kind}\t %7.2f\t\t {type}\t {seqno}\t {length}\n" %((time.time() - startTime)*1000))
 
 def drop(rate):
     random.seed()
@@ -167,7 +168,7 @@ def resend_pkt(value): #will retransmit the file while timeout
     seqno = int.from_bytes(pkt[2:4], 'big')
     # if type == 3:
         # print("resend: FIN")
-    print(f"resend, window: {window.keys()}")
+    # print(f"resend, window: {window.keys()}")
     record_log('snd', t[type], seqno, len(pkt[4:]))
     control.resend_seg += 1
 

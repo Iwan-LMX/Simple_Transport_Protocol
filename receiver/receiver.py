@@ -40,6 +40,9 @@ def main():
                 record_log('rcv', 'SYN', rcv_seqno, 0)
                 next_seq = reply_ACK(receiver, rcv_seqno, 1, addr)
                 break
+            else:
+                print("Detect unexpected behaviour, here to terminate!")
+                sys.exit(0)
         #-----------------Established state------------------------#
         remainWin = control.max_win
         filename = f'./receiver/{control.txt_file_received}';   file = open(filename, 'w+')
@@ -62,7 +65,9 @@ def main():
                 elif rcv_type == 0 and remainWin < len(rcv_data):
                     print(f"drop a packet: seqno = {rcv_seqno} next: {next_seq}")
                     continue
-                
+                if rcv_type == 1:
+                    print("Detect unexpected behaviour, here to terminate!")
+                    sys.exit(0)
                 if rcv_type == 2:
                     record_log('rcv', 'SYN', rcv_seqno, 0)
                     reply_ACK(receiver, rcv_seqno, 1, addr)  
@@ -80,6 +85,9 @@ def main():
                 if rcv_type == 3 and addr[1] == control.sender_port:
                     record_log('rcv', 'FIN', rcv_seqno, 0)
                     reply_ACK(receiver, rcv_seqno, 1, addr)
+                else:
+                    print("Detect unexpected behaviour, here to terminate!")
+                    sys.exit(0)
             except socket.timeout:
                 continue
 
@@ -102,7 +110,7 @@ def timer_thread():
 
 def record_log(kind, type, seqno, length):
     global log, startTime
-    print(f"{kind}\t %7.2f\t\t {type}\t {seqno}\t {length}\n" %((time.time() - startTime)*1000))
+    log.write(f"{kind}\t %7.2f\t\t {type}\t {seqno}\t {length}\n" %((time.time() - startTime)*1000))
 
 def reply_ACK(socket, rcv_seqno, size, addr):
     pkt = (1).to_bytes(2, byteorder='big');     
