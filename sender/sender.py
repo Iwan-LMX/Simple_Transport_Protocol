@@ -54,7 +54,7 @@ def main():
         seqno = send_pkt(DATA, seqno, file[0: i])
         control.orig_data_snd+=len(file[0: i]); control.ori_seg_snd+=1
         listener = threading.Thread(target=listen_thread, args=());    listener.start()
-        timer = RepeatTimer(control.rto, resend_pkt, args=(window[min(window)], ))
+        timer = RepeatTimer(control.rto, resend_pkt, args=(next(iter(window.values())), )); timer.start()
 
         while control.is_alive:
             if i < len(file) and remainWin >= len(file[i:i+1000]):
@@ -63,14 +63,14 @@ def main():
                 control.ori_seg_snd+=1;     control.orig_data_snd += len(data)
 
                 timer.cancel()
-                timer = RepeatTimer(control.rto, resend_pkt, args=(window[min(window)], ))
+                timer = RepeatTimer(control.rto, resend_pkt, args=(next(iter(window.values())), ))
                 timer.start()
             #--------------Closing state---------------------#
             if i>=len(file) and remainWin == control.max_win : 
                 timer.cancel()
                 # print(f"closing {control.rto}")
                 send_pkt(FIN, seqno)
-                timer = RepeatTimer(control.rto, resend_pkt, args=(window[min(window)], ))
+                timer = RepeatTimer(control.rto, resend_pkt, args=(next(iter(window.values())), ))
                 timer.start()
                 break
     #------------------------FIN_WAIT------------------------#
@@ -108,13 +108,13 @@ def send_pkt(type: int, seqno: int, data = b''):
     len_data = len(data) if len(data) else 1
     seqno = (seqno + len_data) % 65536
     with threading.Lock():
-        window[seqno] = pkt;   remainWin -= len(data) 
+        window[seqno] = (type, pkt);   remainWin -= len(data) 
     # print(f"seqnos: {window.keys()}")
     return seqno
 
 def listen_thread():
     global control, window, remainWin, log
-    cnt = 0; last_seqno = 65536
+    cnt = 0; last_seqno = 65536; rcv_type = 1
 
     while control.is_alive:
         try:
@@ -126,27 +126,23 @@ def listen_thread():
                 last_seqno = seqno
                 if seqno in window:
                     with threading.Lock():
-                        while window and min(window) <= seqno: 
-                            length = len(window.pop(min(window))) -4
-                            control.ori_data_recv += length
-                            remainWin += length
+                        while window and (seqno - next(iter(window))+ 65536) % 65536 <= control.max_win: 
+                            (rcv_type, pkt) = window.pop(next(iter(window))) 
+                            control.ori_data_recv += (len(pkt) -4)
+                            remainWin += (len(pkt) - 4)
+                if rcv_type == 3:
+                    print("FInish listen")
+                    break
                 else:
-                    # record_log('dupACKrecv', t[1], seqno, 0)
                     control.dup_ack_recv += 1
                 if cnt == 3:
                     # print('cnt = 3:')
-                    resend_pkt(window[min(window)])
+                    resend_pkt(next(iter(window.values())))
                 # print(f"seqnos: {window.keys()}")
             else:
                 record_log('drp', t[1], seqno, 0)
                 control.ack_drp += 1
-        except socket.timeout:
-            if window: 
-                print(window.keys())
-                continue
-            else:  break
         except ConnectionRefusedError:
-            control.is_alive = False
             break
 
 def record_log(kind, type, seqno, length):
@@ -164,12 +160,14 @@ class RepeatTimer(threading.Timer):
         while not self.finished.wait(self.interval):
             self.function(*self.args, **self.kwargs)
 
-def resend_pkt(pkt): #will retransmit the file while timeout
-    global control
+def resend_pkt(value): #will retransmit the file while timeout
+    (type, pkt) = value
+    global control, window
     control.socket.send(pkt)
-    type = int.from_bytes(pkt[:2], 'big');  seqno = int.from_bytes(pkt[2:4], 'big')
+    seqno = int.from_bytes(pkt[2:4], 'big')
     # if type == 3:
         # print("resend: FIN")
+    print(f"resend, window: {window.keys()}")
     record_log('snd', t[type], seqno, len(pkt[4:]))
     control.resend_seg += 1
 

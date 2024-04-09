@@ -49,17 +49,16 @@ def main():
             if addr[1] == control.sender_port:
                 rcv_type, rcv_seqno, rcv_data = parse_packet(buf)
                 if rcv_type == 0 and remainWin >= len(rcv_data):
-                    if next_seq <= rcv_seqno:
+                    if  (rcv_seqno - next_seq + 65536)%65536 <= control.max_win:
                         record_log('rcv', 'DATA', rcv_seqno, len(rcv_data))
                         window[rcv_seqno] = rcv_data;   remainWin -= len(rcv_data)
-                        if next_seq in window:
-                            while next_seq in window:
-                                data = window.pop(next_seq);    remainWin+=len(data)
-                                control.ori_data_recv += len(data); control.ori_seg_recv += 1
-                                file.write(data.decode("utf-8"))
-                                next_seq += len(data)
+                        while next_seq in window:
+                            data = window.pop(next_seq);    remainWin+=len(data)
+                            control.ori_data_recv += len(data); control.ori_seg_recv += 1
+                            file.write(data.decode("utf-8"))
+                            next_seq =  (next_seq + len(data))%65536
                     else: control.dup_seg_recv += 1; control.dup_seg_snd += 1
-                    next_seq = reply_ACK(receiver, next_seq, 0, addr)
+                    reply_ACK(receiver, next_seq, 0, addr)
                 elif rcv_type == 0 and remainWin < len(rcv_data):
                     print(f"drop a packet: seqno = {rcv_seqno} next: {next_seq}")
                     continue

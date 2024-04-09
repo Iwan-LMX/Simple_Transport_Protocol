@@ -1,5 +1,5 @@
 
-Original data received:		18577
-Original segments received:	19
-Dup data segments received:	0
-Dup ack segments sent:		0
+Original data received:		125179
+Original segments received:	126
+Dup data segments received:	95
+Dup ack segments sent:		95

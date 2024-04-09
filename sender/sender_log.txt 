@@ -1,0 +1,8 @@
+
+Original data sent:			125179
+Original data acked:		125179
+Original segments sent:		126
+Retransmitted segments:		163
+Dup acks received:			109
+Data segments dropped:		67
+Ack segments dropped:		113
