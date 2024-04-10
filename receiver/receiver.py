@@ -32,6 +32,7 @@ def main():
         receiver.bind(('', control.receiver_port)); receiver.settimeout(None)
         while control.is_alive:
             buf, addr = receiver.recvfrom(1024)
+
             rcv_type, rcv_seqno, rcv_data= parse_packet(buf)
 
             if rcv_type == 2 and addr[1] == control.sender_port:
@@ -44,9 +45,7 @@ def main():
                 sys.exit(0)
         #-----------------Established state------------------------#
         remainWin = control.max_win
-        filename = f'{control.txt_file_received}';   file = open(filename, 'w+')
-        while control.is_alive:
-            buf, addr = receiver.recvfrom(1024)
+
             if addr[1] == control.sender_port:
                 rcv_type, rcv_seqno, rcv_data = parse_packet(buf)
                 if rcv_type == 0 and remainWin >= len(rcv_data):
@@ -59,20 +58,7 @@ def main():
                             control.ori_data_recv += len(data); control.ori_seg_recv += 1
                             file.write(data.decode("utf-8"))
                             next_seq =  (next_seq + len(data))%65536
-
-                    else: control.dup_seg_recv += 1; control.dup_seg_snd += 1
-                    reply_ACK(receiver, next_seq, 0, addr)
-
-                elif rcv_type == 0 and remainWin < len(rcv_data):
-                    print(f"drop a packet: seqno = {rcv_seqno} next: {next_seq}")
-                    continue
-
-                if rcv_type == 1:
-                    print("Detect unexpected behaviour, here to terminate!");   sys.exit(0)
-                if rcv_type == 2:
-                    record_log('rcv', 'SYN', rcv_seqno, 0)
-                    reply_ACK(receiver, rcv_seqno, 1, addr)  
-                if rcv_type == 3:   #FIN from sender
+                            
                     record_log('rcv', 'FIN', rcv_seqno, 0)
                     reply_ACK(receiver, rcv_seqno, 1, addr)
                     break               
@@ -92,8 +78,7 @@ def main():
             except socket.timeout:
                 continue
 
-        timer.cancel(); receiver.close()
-    
+
     log.write(f"\nOriginal data received:\t\t{control.ori_data_recv}\n")
     log.write(f"Original segments received:\t{control.ori_seg_recv}\n")
     log.write(f"Dup data segments received:\t{control.dup_seg_recv}\n")
@@ -104,15 +89,6 @@ def main():
 #------------------------Self defined functions----------------------------#
 #--------------------------------------------------------------------------#
 def timer_thread():
-    with threading.Lock():
-        global control
-        control.is_alive = False
-
-def record_log(kind, type, seqno, length):  #this function is used to record
-    global log, startTime
-    log.write(f"{kind}\t %7.2f\t\t {type}\t {seqno}\t {length}\n" %((time.time() - startTime)*1000))
-
-def reply_ACK(socket, rcv_seqno, size, addr):   #Any packet replied by listener will through this function
     pkt = (1).to_bytes(2, byteorder='big');     
     seqno = (rcv_seqno + size) % 65536
     pkt += seqno.to_bytes(2, byteorder='big')
@@ -154,6 +130,5 @@ if __name__ == "__main__":
     MSL = 1       # Maximum segment lifetimes, second
     t = {0: 'DATA', 1:'ACK', 2:'SYN', 3:'FIN'}
     window = {};    remainWin = 0;  startTime = 0
-    log = open('receiver_log.txt', 'w+')
     control: Control
     main()
