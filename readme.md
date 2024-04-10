@@ -1,241 +1,127 @@
- 
- # Overview receiver file
+# 1. Overall program design
 
- 
- The scenario is simple: a sender, or multiple senders, send a sequence of 
- random numbers to a receiver. The receiver performs some basic modulo 
- arithmetic to determine whether each random number it receives is odd or
- even, and sends this information back to the sender.
- 
- Message format from sender to receiver (2 bytes total):
- 
-    +-------------+
-    | Byte Offset |
-    +------+------+
-    |   0  |   1  |
-    +------+------+
-    |    number   |
-    +-------------+
- 
- Message format from receiver to sender (3 bytes total):
- 
-    +--------------------+
-    |    Byte Offset     |
-    +------+------+------+
-    |   0  |   1  |   2  |
-    +------+------+------+
-    |    number   |  odd |
-    +-------------+------+
- 
- 
- Description
- -----------
- 
- - The sender is invoked with three command-line arguments:  
-     1. the hostname or IP address of the receiver  
-     2. the port number of the receiver
-     3. the duration to run, in seconds, before terminating
- 
- - The receiver is invoked with two command-line arguments:
-     1. the port number on which to listen for incoming messages
-     2. the duration to wait for a message, in seconds, before terminating
- 
- The sender will spawn two child threads: one to listen for responses from
- the receiver, and another to wait for a timer to expire. Meanwhile, the 
- main thread will sit in a loop and send a sequence of random 16-bit 
- unsigned integers to the receiver. Messages will be sent and received 
- through an ephemeral (OS allocated) port. After each message is sent, the 
- sender may sleep for a random amount of time.  Once the timer expires, 
- the child threads, and then the sender process, will gracefully terminate.
- 
- The receiver is single threaded and sits in a loop, waiting for messages. 
- Each message is expected to contain a 16-bit unsigned integer. The receiver 
- will determine whether the number is odd or even, and send a message back 
- with the original number as well as a flag indicating whether the number 
- is odd or even. If no message is received within a certain amount of time, 
- the receiver will terminate.
- 
- 
- Features
- --------
- 
- - Parsing command-line arguments
- - Random number generation (sender only)
- - Modulo arithmetic (receiver only)
- - Communication via UDP sockets
- - Non-blocking sockets (sender only)
- - Blocking sockets with a timeout (receiver only)
- - Using a "connected" UDP socket, to send() and recv() (sender only)
- - Using an "unconnected" UDP socket, to sendto() and recvfrom() (receiver 
-   only)
- - Conversion between host byte order and network byte order for 
-   multi-byte fields.
- - Timers (sender only)
- - Multi-threading (sender only)
- - Simple logging
- 
- 
- Usage
- -----
- 
- 1. Run the receiver program:
- 
-     $ python3 receiver.py 54321 10
- 
-    This will invoke the receiver to listen on port 54321 and terminate
-    if no message is receieved within 10 seconds.
- 
- 2. Run the sender program:
- 
-     $ python3 sender.py 127.0.0.1 54321 30
- 
-    This will invoke the sender to send a sequence of random numbers to
-    the receiver at 127.0.0.1:54321, and terminate after 30 seconds.
- 
-    Multiple instances of the sender can be run against the same receiver.
- 
- 
- Notes
- -----
- 
- - The sender and receiver are designed to be run on the same machine, 
-   or on different machines on the same network. They are not designed 
-   to be run on different networks, or on the public internet.
- 
- 
- Author
- ------
- 
- Written by Tim Arney (t.arney@unsw.edu.au) for COMP3331/9331.
- 
- 
- CAUTION
- -------
- 
- - This code is not intended to be simply copy and pasted.  Ensure you 
-   understand this code before using it in your own projects, and adapt
-   it to your own requirements.
- - The sender adds artificial delay to its sending thread.  This is purely 
-   for demonstration purposes.  In general, you should NOT add artificial
-   delay as this will reduce efficiency and potentially mask other issues.
+The program is based on Python 3 version 3.12.1 (Must higher than 3.6, since then `dict` becomes ordered in Python. That’s a feature used in the program)
+
+Organization of the code like this:
+
+```markdown
+:.
+│   readme.md
+│
+├───images
+│       image-1.png
+│       image.png
+│
+├───receiver
+│       FileToReceive.txt
+│       receiver.py
+│       receiverSample.py
+│       receiver_log.txt
+│
+└───sender
+    │   sender.py
+    │   senderSample.py
+    │   sender_log.txt
+    │
+    └───sendFiles
+            asyoulik.txt
+            random1.txt
+            random2.txt
+```
+
+The task of listener is much simpler than sender,  since listener is in a single thread (expect Time Wait state).  The sender need process much more jobs and it’s in a multithread.
+
+Bellow is the process graph also the structure of my program.
+
+## 1.1 Listener
+
+<img src="./images/image.png" width="200">
 
 
-# Overview sender file
+## 1.2 Sender
 
- 
- The scenario is simple: a sender, or multiple senders, send a sequence of 
- random numbers to a receiver. The receiver performs some basic modulo 
- arithmetic to determine whether each random number it receives is odd or
- even, and sends this information back to the sender.
- 
- Message format from sender to receiver (2 bytes total):
- 
-    +-------------+
-    | Byte Offset |
-    +------+------+
-    |   0  |   1  |
-    +------+------+
-    |    number   |
-    +-------------+
- 
- Message format from receiver to sender (3 bytes total):
- 
-    +--------------------+
-    |    Byte Offset     |
-    +------+------+------+
-    |   0  |   1  |   2  |
-    +------+------+------+
-    |    number   |  odd |
-    +-------------+------+
- 
- 
- Description
- -----------
- 
- - The sender is invoked with three command-line arguments:  
-     1. the hostname or IP address of the receiver  
-     2. the port number of the receiver
-     3. the duration to run, in seconds, before terminating
- 
- - The receiver is invoked with two command-line arguments:
-     1. the port number on which to listen for incoming messages
-     2. the duration to wait for a message, in seconds, before terminating
- 
- The sender will spawn two child threads: one to listen for responses from
- the receiver, and another to wait for a timer to expire. Meanwhile, the 
- main thread will sit in a loop and send a sequence of random 16-bit 
- unsigned integers to the receiver. Messages will be sent and received 
- through an ephemeral (OS allocated) port. After each message is sent, the 
- sender may sleep for a random amount of time.  Once the timer expires, 
- the child threads, and then the sender process, will gracefully terminate.
- 
- The receiver is single threaded and sits in a loop, waiting for messages. 
- Each message is expected to contain a 16-bit unsigned integer. The receiver 
- will determine whether the number is odd or even, and send a message back 
- with the original number as well as a flag indicating whether the number 
- is odd or even. If no message is received within a certain amount of time, 
- the receiver will terminate.
- 
- 
- Features
- --------
- 
- - Parsing command-line arguments
- - Random number generation (sender only)
- - Modulo arithmetic (receiver only)
- - Communication via UDP sockets
- - Non-blocking sockets (sender only)
- - Blocking sockets with a timeout (receiver only)
- - Using a "connected" UDP socket, to send() and recv() (sender only)
- - Using an "unconnected" UDP socket, to sendto() and recvfrom() (receiver 
-   only)
- - Conversion between host byte order and network byte order for 
-   multi-byte fields.
- - Timers (sender only)
- - Multi-threading (sender only)
- - Simple logging
- 
- 
- Usage
- -----
- 
- 1. Run the receiver program:
- 
-     $ python3 receiver.py 54321 10
- 
-    This will invoke the receiver to listen on port 54321 and terminate
-    if no message is receieved within 10 seconds.
- 
- 2. Run the sender program:
- 
-     $ python3 sender.py 127.0.0.1 54321 30
- 
-    This will invoke the sender to send a sequence of random numbers to
-    the receiver at 127.0.0.1:54321, and terminate after 30 seconds.
- 
-    Multiple instances of the sender can be run against the same receiver.
- 
- 
- Notes
- -----
- 
- - The sender and receiver are designed to be run on the same machine, 
-   or on different machines on the same network. They are not designed 
-   to be run on different networks, or on the public internet.
- 
- 
- Author
- ------
- 
- Written by Tim Arney (t.arney@unsw.edu.au) for COMP3331/9331.
- 
- 
- CAUTION
- -------
- 
- - This code is not intended to be simply copy and pasted.  Ensure you 
-   understand this code before using it in your own projects, and adapt
-   it to your own requirements.
- - The sender adds artificial delay to its sending thread.  This is purely 
-   for demonstration purposes.  In general, you should NOT add artificial
-   delay as this will reduce efficiency and potentially mask other issues.
+<img src="./images/image-1.png" width="200">
+
+# 2. Data structure design
+
+The STP packet structure fellows the requirement and based on bytes
+
+```markdown
++-------------+-------------+-------------+
+|              Byte Offset                |
++------+------+-------------+-------------+
+|   0  |   1  |   2  |   3  |   4  | MSS  |
++------+------+-------------+-------------+
+|    type     |     seqno   |     data    |
++-------------+-------------+-------------+
+```
+
+In this program I also used the `dataclass` designed a self class `Control` .
+
+It stores the input system input arguments 
+
+There name and type look like this (receiver’s is similar)  → →
+
+```python
+@dataclass
+class Control:
+    """Control block: parameters for the sender program."""
+    receiver_port: int
+    sender_port: int
+    txt_file_received: str
+    max_win: int         
+    is_alive: bool = True
+    ori_data_recv: int = 0; ori_seg_recv: int = 0
+    dup_seg_recv: int = 0; dup_seg_snd: int = 0
+```
+
+Importantly, I use a `window: dict` to main the packet that sender / receiver that hold on at a moment. It key and value `key (ACK seqno): value (packet type: STP packet)`
+
+And `remainWin: int` to calculate the remain STP packet size that window can hold on at a moment.
+
+Since `dictionary` is stored orderly in Python (Only after 3.6! before is unordered). Thus we can use `next(iter(window))` to find the oldest unacknowledged packet of the window.
+
+# 3. Operation of the sender and receiver
+
+## 3.1 Receiver
+
+Operation of receiver is simple.  It need receive packets and reply every normal packets that received from sender, and these packets’ information into the receiver log.
+
+While receive a packet the receiver will check if this is the next expect ordered packet
+
+- Buffer it to `window` if not acknowledged
+    - Read the next expected packet in the window and update if it existed.
+- Ignored if the packet already acknowledged
+
+Then reply the expected next packet
+
+While received the `FIN` packet, the receiver will start a timer to count down 2 seconds and then close connection and exist.
+
+## 3.2 Sender
+
+The sender will emulate TCP to build a connection with receiver first.
+
+While in the established & finish state the sender will active two child thread, one for listening the receiver’s ACK packets, one timer to count down the oldest packet.
+
+When sender going to send a packet it will check the left size of `remainWin`
+
+- If the packet is able to send then sender will record it in the `window` and reduce the `remainWin` , also start a new timer for the oldest packets.
+- If the packet is unable to be load into the `window` the sender will wait until the window be released.
+
+Timer thread will send the oldest packets every `rto` milliseconds.  It ends by listening thread or main thread.
+
+The listening thread start at established state and finish after receive the FIN, ACK.  Upon received a packet it will do follows:
+
+Emulate it dropped or not, then record it to the sender log. If not dropped then:
+
+- Received packets and remove out prior packets in `window` and recover the `remainWin`. if received packet’s ACK number larger than the oldest packet’s received packet’s ACK number in the `window`
+- Count the sequence number, if a sequence number appear more than 3 times then resend the oldest packet in the window.
+- If received an ACK which correspond type is FIN, then stop listen thread
+
+# 4. Design trade-offs considered and made
+
+Originally I want simply to `<, >, <=` to check check the upcoming packets’ relation with the oldest packets in the window.  But I found it’s circled from 0 to 65535. Hence I use a way like this $seqno - next(iter(window))+ 65536) \% 65536 <= control.max\_win$ to judege.
+
+For example if the upcoming `seqno` is on the left of the oldest packet, then the result will be near 65536, far large than `max_win`
+
+The another trade-off is in receiver, I considered to use single thread to process all the life time of receiver.  However, it will stocked at Time wait state.  Therefore, I use a new thread timer to countdown 2*MSL, then modify a global variable to finish the program.

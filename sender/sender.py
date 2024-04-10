@@ -18,6 +18,9 @@ class Control:
     rto: int;    flp: float;    rlp: float
     socket: socket.socket          
     is_alive: bool = True
+    ori_data_recv: int = 0; orig_data_snd: int = 0
+    ori_seg_snd: int = 0;   resend_seg: int = 0;    snd_seg_drp: int = 0
+    dup_ack_recv: int = 0;  ack_drp: int = 0
 #--------------------------------------------------------------------------#
 #---------------------------------Main body--------------------------------#
 #--------------------------------------------------------------------------#
@@ -26,99 +29,140 @@ def main():
         sys.exit(f"Usage: {sys.argv[0]} port wait_time")
     global window, remainWin, startTime, log, control
     control = parse_argv(sys.argv)
+
     #-------------------------SYN_SENT-----------------------#
-    random.seed();  seqno = random.randrange(2**16)
+    seqno = random.randrange(2**16)
     control.socket.settimeout(control.rto);     startTime = time.time()
     remainWin = control.max_win;    send_pkt(SYN, seqno)
 
     while control.is_alive:
         try:
-            pkt = control.socket.recv(control.max_win)
+            pkt = control.socket.recv(1024)
             if int.from_bytes(pkt[:2], 'big') == 1:
-                seqno = (seqno + 1) % 65535
+                seqno = (seqno + 1) % 65536
                 window.pop(seqno)
-                log.write(f"rcv\t %7.2f\t\t {t[1]}\t {seqno}\t 0\n" %((time.time() - startTime)*1000))
+                record_log('rcv', t[1], seqno, 0)
                 break
         except socket.timeout:
             send_pkt(SYN, seqno);  continue
     control.socket.settimeout(None)
 
     #--------------------Established & Finish state-------------------#
-    filename = f'./sender/sendFiles/{control.txt_file_to_send}'
+    filename = f'{control.txt_file_to_send}'
     with open(filename, 'r') as file:
         file = file.read().encode();    i = 1000
         seqno = send_pkt(DATA, seqno, file[0: i])
+        control.orig_data_snd+=len(file[0: i]); control.ori_seg_snd+=1
         listener = threading.Thread(target=listen_thread, args=());    listener.start()
+        timer = RepeatTimer(control.rto, resend_pkt, args=(next(iter(window.values())), )); timer.start()
 
         while control.is_alive:
             if i < len(file) and remainWin >= len(file[i:i+1000]):
                 data = file[i:i+1000];  i += 1000
                 seqno = send_pkt(DATA, seqno, data)
-                
+                control.ori_seg_snd+=1;     control.orig_data_snd += len(data)
+
+                timer.cancel()
+                timer = RepeatTimer(control.rto, resend_pkt, args=(next(iter(window.values())), ))
+                timer.start()
             #--------------Closing state---------------------#
             if i>=len(file) and remainWin == control.max_win : 
+                timer.cancel()
                 send_pkt(FIN, seqno)
-                with threading.Lock(): control.socket.settimeout(control.rto)
+                timer = RepeatTimer(control.rto, resend_pkt, args=(next(iter(window.values())), ))
+                timer.start()
                 break
-
     #------------------------FIN_WAIT------------------------#
+    with threading.Lock(): control.socket.settimeout(2)
     while control.is_alive:
         if not window:
+            timer.cancel(); listener.join()
             control.is_alive = False
-            listener.join()
         else:
             continue
+    
     control.socket.close()
+    log.write(f"\nOriginal data sent:\t\t\t{control.orig_data_snd}\n")
+    log.write(f"Original data acked:\t\t{control.ori_data_recv}\n")
+    log.write(f"Original segments sent:\t\t{control.ori_seg_snd}\n")
+    log.write(f"Retransmitted segments:\t\t{control.resend_seg}\n")
+    log.write(f"Dup acks received:\t\t\t{control.dup_ack_recv}\n")
+    log.write(f"Data segments dropped:\t\t{control.snd_seg_drp}\n")
+    log.write(f"Ack segments dropped:\t\t{control.ack_drp}\n")
+    log.close()
     sys.exit(0)
 #--------------------------------------------------------------------------#
 #------------------------Self defined functions----------------------------#
 #--------------------------------------------------------------------------#
-def send_pkt(type: int, seqno: int, data = b''):
+def send_pkt(type: int, seqno: int, data = b''): #Any packet send out from sender will through this function
     global startTime, log, window, remainWin, control
     pkt = type.to_bytes(2, "big")
     pkt += seqno.to_bytes(2, "big");    pkt += data
-    control.socket.send(pkt)
-    log.write(f"snd\t %7.2f\t\t {t[type]}\t {seqno}\t {len(data)}\n" %((time.time() - startTime)*1000))
+    if not drop(control.flp):
+        control.socket.send(pkt)
+        record_log('snd', t[type], seqno, len(data))
+    else:
+        record_log('drp', t[type], seqno, len(data))
+        if type==0: control.snd_seg_drp+=1
 
     len_data = len(data) if len(data) else 1
-    seqno = (seqno + len_data) % 65535
+    seqno = (seqno + len_data) % 65536
     with threading.Lock():
-        window[seqno] = pkt;   remainWin -= len(data) 
+        window[seqno] = (type, pkt);   remainWin -= len(data) 
     return seqno
 
-def timer_thread(pkt): #will retransmit the file while timeout
-    global startTime, log, control
-    control.socket.send(pkt)
-
-    type = 'DATA' if len(pkt) > 4 else 'FIN'
-    with threading.Lock(): 
-        log.write(f"snd\t %7.2f\t\t {type}\t {int.from_bytes(pkt[2:4], "big")}\t 0\n" %((time.time() - startTime)*1000))
-
-def listen_thread():
+def listen_thread():    #Any packet after SYN state be received will through this function
     global control, window, remainWin, log
-    timer = threading.Timer(control.rto, timer_thread, args=(window[min(window)]));    timer.start()
+    cnt = 0; last_seqno = 65536; rcv_type = 1
 
     while control.is_alive:
         try:
-            recv = control.socket.recv(control.max_win)
-            seqno = int.from_bytes(recv[2:4], "big")
-            if seqno in window:
-                log.write(f"rcv\t %7.2f\t\t {t[1]}\t {seqno}\t 0\n" %((time.time() - startTime)*1000)) 
-                with threading.Lock():  
-                    remainWin += (len(window.pop(seqno)) - 4)
-                timer.cancel()
-                if window:
-                    timer = threading.Timer(control.rto, timer_thread, args=(window[min(window)]))
-                    timer.start()
+            recv = control.socket.recv(1024)
+            type = int.from_bytes(recv[:2], 'big'); seqno = int.from_bytes(recv[2:4], "big")
+            if not drop(control.rlp):
+                record_log('rcv', t[1], seqno, 0)
+                cnt = cnt + 1 if last_seqno == seqno else 1
+                last_seqno = seqno
+                if seqno in window:
+                    with threading.Lock():
+                        while window and (seqno - next(iter(window))+ 65536) % 65536 <= control.max_win: 
+                            (rcv_type, pkt) = window.pop(next(iter(window))) 
+                            control.ori_data_recv += (len(pkt) -4)
+                            remainWin += (len(pkt) - 4)
+                
+                if rcv_type == 3:   break
+                elif type==0:       control.dup_ack_recv += 1
+
+                if cnt == 3:        resend_pkt(next(iter(window.values())))
             else:
-                with threading.Lock():
-                    log.write(f"drp\t %7.2f\t\t {t[1]}\t {seqno}\t 0\n" %((time.time() - startTime)*1000))
-        except BlockingIOError: #No data available to read
-            continue
-        except socket.timeout:
-            if window: continue
-            else:  break
-        
+                record_log('drp', t[1], seqno, 0)
+                if type == 0: control.ack_drp += 1
+        except ConnectionRefusedError:  break
+
+def record_log(kind, type, seqno, length):  #this function is used to record
+    global log, startTime
+    with threading.Lock():
+        log.write(f"{kind}\t %7.2f\t\t {type}\t {seqno}\t {length}\n" %((time.time() - startTime)*1000))
+
+def drop(rate):
+    random.seed()
+    rand = random.random()
+    if rand < rate: return True
+    else:   return False
+
+class RepeatTimer(threading.Timer):
+    def run(self):
+        while not self.finished.wait(self.interval):
+            self.function(*self.args, **self.kwargs)
+
+def resend_pkt(value): #will retransmit the file while timeout
+    (type, pkt) = value
+    global control, window
+    control.socket.send(pkt)
+    seqno = int.from_bytes(pkt[2:4], 'big')
+    record_log('snd', t[type], seqno, len(pkt[4:]))
+    if type == 0:   control.resend_seg += 1
+
 def setup_socket(remote, sender_port, receiver_port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -161,6 +205,6 @@ if __name__ == "__main__":
     DATA = 0;   ACK = 1;    SYN = 2;    FIN = 3
     t = {0: 'DATA', 1:'ACK', 2:'SYN', 3:'FIN'}
     window = {};   remainWin = 0;   startTime = 0
-    log = open('./sender/sender_log.txt ', 'w+')
+    log = open('sender_log.txt ', 'w+')
     control: Control
     main()
